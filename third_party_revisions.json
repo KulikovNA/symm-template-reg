@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-07-15",
+  "third_party_root": "/home/nikita/disser/fragment-template-registration-lab",
+  "policy": {
+    "reference_repositories_are_runtime_dependencies": false,
+    "reference_repositories_were_modified": false,
+    "license_hash_semantics": "Each license.sha256 is the exact hash of the source checkout file; vendored text copies may normalize a missing final newline.",
+    "packages_installed_during_audit": [],
+    "native_extensions_built_during_audit": []
+  },
+  "repositories": [
+    {
+      "name": "RegTR",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/RegTR",
+      "remote_url": "https://github.com/yewzijian/RegTR.git",
+      "commit": "0edee25cda6b1ac1c2b0ac686dcdf2593abf25ba",
+      "branch": "main",
+      "describe": "v1-3-g0edee25",
+      "commit_date": "2023-10-29T09:27:57+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "1a79733acea30edd2a6da96e1e8873b1741ca3ffb4d22017f2f524403747d811",
+        "vendored_copy": "third_party_licenses/RegTR-MIT.txt"
+      },
+      "dependency_manifests": ["src/requirements.txt"],
+      "principal_dependencies": [
+        "torch",
+        "torchvision",
+        "numpy",
+        "scipy",
+        "pytorch3d",
+        "MinkowskiEngine",
+        "open3d",
+        "h5py",
+        "nibabel",
+        "coloredlogs",
+        "easydict"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "CPU C++ Python extensions plus external compiled dependencies",
+        "source_roots": ["src/models/backbone_kpconv/cpp_wrappers"],
+        "native_counts": {"cpp": 5, "headers": 4, "cuda": 0, "shared_objects": 0},
+        "notes": "KPConv preprocessing includes pybind/nanoflann grid-subsampling and neighbor wrappers; the backbone also imports MinkowskiEngine and pytorch3d.ops."
+      },
+      "compatibility": {
+        "assessment": "partial-after-port",
+        "full_upstream_runtime": "blocked",
+        "reason": "The package auto-import reaches missing MinkowskiEngine and pytorch3d; its isolated self/cross-attention file passed a torch 2.9.1 CPU forward.",
+        "audit_smoke": "src/models/transformer/transformers.py isolated-file forward: finite outputs (2,5,2,16) and (2,7,2,16)"
+      }
+    },
+    {
+      "name": "PointTransformerV3",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/PointTransformerV3",
+      "remote_url": "https://github.com/Pointcept/PointTransformerV3.git",
+      "commit": "3229e9b7de1770c8ad17c316f8e349982de509f8",
+      "branch": "main",
+      "describe": "3229e9b",
+      "commit_date": "2025-10-24T15:27:41+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "8e293fb7c93586fb19294bcae2096755b467e465b010b1547f5658a3df1682ab",
+        "vendored_copy": "third_party_licenses/PointTransformerV3-MIT.txt"
+      },
+      "dependency_manifests": ["README.md", ".gitmodules"],
+      "principal_dependencies": [
+        "torch",
+        "addict",
+        "spconv",
+        "torch_scatter",
+        "timm",
+        "flash_attn (optional)",
+        "Pointcept submodule (optional framework path)"
+      ],
+      "custom_extensions": {
+        "present": false,
+        "kind": "No native source in this checkout; mandatory external binary packages",
+        "source_roots": [],
+        "native_counts": {"cpp": 0, "headers": 0, "cuda": 0, "shared_objects": 0},
+        "notes": "The standalone model imports spconv and torch_scatter unconditionally; FlashAttention is optional. The Pointcept git submodule is uninitialized at expected commit df369801."
+      },
+      "compatibility": {
+        "assessment": "optional-blocked",
+        "full_upstream_runtime": "blocked",
+        "reason": "addict, spconv, torch_scatter and timm are absent. CUDA 13 wheels/ABI compatibility was not assumed and no packages were installed.",
+        "audit_smoke": "import model: ModuleNotFoundError: addict"
+      }
+    },
+    {
+      "name": "Pointcept",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/Pointcept",
+      "remote_url": "https://github.com/Pointcept/Pointcept",
+      "commit": "2b97e6e77a5ad731778f268ccea28ed684367b3f",
+      "branch": "main",
+      "describe": "v1.7.0-6-g2b97e6e",
+      "commit_date": "2026-07-06T06:58:05+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "33287c1b71d0ce42d2a9d96e4451ef7668362733dc72c11973c3de1181b18153",
+        "vendored_copy": "third_party_licenses/Pointcept-MIT.txt"
+      },
+      "dependency_manifests": ["environment.yml"],
+      "principal_dependencies": [
+        "Python 3.10",
+        "torch 2.5.0+cu124",
+        "torchvision 0.20.0",
+        "torch_cluster",
+        "torch_scatter",
+        "torch_sparse",
+        "torch_geometric",
+        "spconv-cu124",
+        "flash_attn",
+        "einops",
+        "scipy",
+        "open3d",
+        "plyfile"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "Multiple C++/CUDA extensions",
+        "source_roots": [
+          "libs/pointops",
+          "libs/pointops2",
+          "libs/pointgroup_ops",
+          "libs/pointrope",
+          "libs/pointseg"
+        ],
+        "native_counts": {"cpp": 25, "headers": 22, "cuda": 21, "shared_objects": 0},
+        "notes": "The recorded environment targets torch 2.5.0 and CUDA 12.4, not torch 2.9.1 and CUDA 13.0."
+      },
+      "compatibility": {
+        "assessment": "optional-blocked",
+        "full_upstream_runtime": "blocked",
+        "reason": "torch_scatter, torch_cluster, spconv and the repository extensions are absent; building them would require an unverified CUDA 13 toolchain and nvcc is unavailable.",
+        "audit_smoke": "import Point structure: ModuleNotFoundError: torch_scatter"
+      }
+    },
+    {
+      "name": "RoITr",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/RoITr",
+      "remote_url": "https://github.com/haoyu94/RoITr.git",
+      "commit": "393539d6709c55b2465231cccb7b951f736a5c72",
+      "branch": "main",
+      "describe": "v1.0.0",
+      "commit_date": "2023-08-17T02:02:17+02:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "c061f82fdf5a94f3d17a0def26316123292749132564a4b621c72c63ea1e35cf",
+        "vendored_copy": "third_party_licenses/RoITr-MIT.txt"
+      },
+      "dependency_manifests": ["requirements.txt", "dependencies.yaml"],
+      "principal_dependencies": [
+        "torch 1.8.0",
+        "torchvision 0.9.0",
+        "numpy",
+        "scipy 1.7.1",
+        "einops 0.4.1",
+        "open3d 0.13.0",
+        "scikit-learn"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "pointops C++/CUDA extension with checked-in legacy binaries",
+        "source_roots": ["cpp_wrappers/pointops"],
+        "native_counts": {"cpp": 8, "headers": 9, "cuda": 6, "shared_objects": 2},
+        "notes": "Checked-in pointops binaries target CPython 3.7/3.8 and cannot be loaded by CPython 3.10."
+      },
+      "compatibility": {
+        "assessment": "partial-after-port",
+        "full_upstream_runtime": "blocked",
+        "reason": "The full encoder requires pointops CUDA, scipy, einops and open3d. PPF/geometric positional embedding is pure torch/numpy and passed a torch 2.9.1 CPU forward.",
+        "audit_smoke": "PPFStructuralEmbedding and GeometricStructureEmbedding: finite (2,8,5,16) and (2,8,8,16)"
+      }
+    },
+    {
+      "name": "GeoTransformer",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/GeoTransformer",
+      "remote_url": "https://github.com/qinzheng93/GeoTransformer",
+      "commit": "e7a135af4c318ff3b8d7f6c963df094d7e4ea540",
+      "branch": "main",
+      "describe": "1.0.0-5-ge7a135a",
+      "commit_date": "2022-12-05T22:11:04+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "564ae16f28676276df1e4489b4db3bee306ae89ece9c96a3344c4c9cccf68138",
+        "vendored_copy": "third_party_licenses/GeoTransformer-MIT.txt"
+      },
+      "dependency_manifests": ["requirements.txt", "setup.py"],
+      "principal_dependencies": [
+        "torch",
+        "numpy",
+        "scipy",
+        "einops",
+        "open3d 0.11.2",
+        "scikit-learn",
+        "easydict",
+        "tensorboard"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "grid-subsampling and radius-neighbor C++ extension declared as CUDAExtension",
+        "source_roots": ["geotransformer/extensions"],
+        "native_counts": {"cpp": 6, "headers": 7, "cuda": 0, "shared_objects": 0},
+        "notes": "setup.py uses torch.utils.cpp_extension.CUDAExtension even though the listed sources are C++; nvcc is therefore part of the upstream build path."
+      },
+      "compatibility": {
+        "assessment": "partial-after-port",
+        "full_upstream_runtime": "blocked",
+        "reason": "The extension is not built and scipy/einops/open3d are absent. Pure matching/embedding/Sinkhorn code is portable, but upstream Sinkhorn hard-codes CUDA tensor allocation and fails on CPU until made device-aware.",
+        "audit_smoke": "LearnableLogOptimalTransport on CPU: RuntimeError: No CUDA GPUs are available"
+      }
+    },
+    {
+      "name": "DFAT",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/DFAT",
+      "remote_url": "https://github.com/fukexue/DFAT.git",
+      "commit": "884149656199c734e2fceff1eda7d7d3b8ebf8c6",
+      "branch": "main",
+      "describe": "kitti-weight-2-g8841496",
+      "commit_date": "2026-04-29T13:48:50+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "564ae16f28676276df1e4489b4db3bee306ae89ece9c96a3344c4c9cccf68138",
+        "vendored_copy": "third_party_licenses/DFAT-MIT.txt"
+      },
+      "dependency_manifests": ["requirements.txt", "setup.py"],
+      "principal_dependencies": [
+        "torch",
+        "numpy",
+        "scipy",
+        "einops",
+        "open3d",
+        "scikit-learn",
+        "setuptools 58.0.4"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "GeoTransformer C++ extension plus CUDA chamfer distance and legacy binaries",
+        "source_roots": ["geotransformer/extensions"],
+        "native_counts": {"cpp": 7, "headers": 7, "cuda": 1, "shared_objects": 2},
+        "notes": "The checked-in geotransformer extension targets CPython 3.8; chamfer distance has a separate CUDA build."
+      },
+      "compatibility": {
+        "assessment": "deferred-blocked",
+        "full_upstream_runtime": "blocked",
+        "reason": "einops and the native extensions are unavailable; focus attention is explicitly second-iteration work and is not part of the baseline.",
+        "audit_smoke": "SpotGuidedTransformer import: ModuleNotFoundError: einops"
+      }
+    },
+    {
+      "name": "taxpose",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/taxpose",
+      "remote_url": "https://github.com/r-pad/taxpose.git",
+      "commit": "0c4298fa0486fd09e63bf24d618a579b66ba0f18",
+      "branch": "main",
+      "describe": "corl_2024_submission",
+      "commit_date": "2024-06-27T08:03:32-07:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "MIT",
+        "source_file": "LICENSE",
+        "sha256": "0564f3aff2054e9f5421edbe24a44fcd53c6572a6c30ef36dc20e29ce8667816",
+        "vendored_copy": "third_party_licenses/taxpose-MIT.txt",
+        "metadata_note": "pyproject.toml names LICENSE.txt, but this checkout contains LICENSE"
+      },
+      "dependency_manifests": ["pyproject.toml", "requirements-gpu.txt", "setup.py"],
+      "principal_dependencies": [
+        "Python >=3.6,<3.10",
+        "torch 2.0.1+cu118",
+        "torchvision 0.15.2",
+        "pytorch3d",
+        "torch_geometric",
+        "torch_scatter",
+        "torch_cluster",
+        "torch_sparse",
+        "dgl",
+        "scipy",
+        "open3d"
+      ],
+      "custom_extensions": {
+        "present": false,
+        "kind": "No in-repository native source; several mandatory dependencies are compiled packages",
+        "source_roots": [],
+        "native_counts": {"cpp": 0, "headers": 0, "cuda": 0, "shared_objects": 0},
+        "notes": "PyTorch3D and PyG-family wheels are pinned around torch 2.0/CUDA 11.8 in requirements-gpu.txt."
+      },
+      "compatibility": {
+        "assessment": "partial-after-clean-adaptation",
+        "full_upstream_runtime": "blocked",
+        "reason": "The declared Python range excludes Python 3.10 and compiled dependencies are absent. The small per-point MLP/soft-weight idea can be implemented with project-local torch modules.",
+        "audit_smoke": "ResidualMLPHead import path: ModuleNotFoundError: scipy (transitive package import)"
+      }
+    },
+    {
+      "name": "PointDSC",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/PointDSC",
+      "remote_url": "https://github.com/XuyangBai/PointDSC.git",
+      "commit": "b009d536ac10b570853833f2178397c154745da9",
+      "branch": "master",
+      "describe": "b009d53",
+      "commit_date": "2021-03-10T12:23:17+08:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "NOASSERTION",
+        "source_file": null,
+        "sha256": null,
+        "vendored_copy": null,
+        "assessment": "No repository-level license or README license grant was found; source copying is not authorized by this audit."
+      },
+      "dependency_manifests": ["environment.yml"],
+      "principal_dependencies": [
+        "Python 3.7.7",
+        "torch 1.6.0+cu101",
+        "torchvision 0.7.0",
+        "numpy 1.19.1",
+        "scipy 1.5.0",
+        "open3d 0.9.0",
+        "scikit-learn 0.23.1",
+        "MinkowskiEngine (optional FCGF path)"
+      ],
+      "custom_extensions": {
+        "present": true,
+        "kind": "prebuilt CPU shared library without source in this checkout",
+        "source_roots": ["utils/libpmc.so"],
+        "native_counts": {"cpp": 0, "headers": 0, "cuda": 0, "shared_objects": 1},
+        "notes": "utils/max_clique.py loads utils/libpmc.so through ctypes; the model's core spatial-consistency block does not require it."
+      },
+      "compatibility": {
+        "assessment": "reference-only-license-blocked",
+        "full_upstream_runtime": "blocked",
+        "reason": "The environment is obsolete and missing dependencies, but the core NonLocalBlock itself imported and ran on torch 2.9.1 CPU. License uncertainty still prohibits copying it.",
+        "audit_smoke": "models.PointDSC.NonLocalBlock: finite output shape (1,16,5)"
+      }
+    },
+    {
+      "name": "detr",
+      "absolute_path": "/home/nikita/disser/fragment-template-registration-lab/detr",
+      "remote_url": "https://github.com/facebookresearch/detr.git",
+      "commit": "29901c51d7fe8712168b8d0d64351170bc0f83e0",
+      "branch": "main",
+      "describe": "v0.2-24-g29901c5",
+      "commit_date": "2024-03-12T08:58:25-07:00",
+      "tracked_worktree_clean_at_audit": true,
+      "license": {
+        "spdx": "Apache-2.0",
+        "source_file": "LICENSE",
+        "sha256": "b208c52b00a2df2c8f4c3298c34407bf2bfe409968213372251c91fcc737a1a5",
+        "vendored_copy": "third_party_licenses/detr-Apache-2.0.txt",
+        "notice_file_present": false
+      },
+      "dependency_manifests": ["requirements.txt"],
+      "principal_dependencies": [
+        "torch >=1.5.0",
+        "torchvision >=0.6.0",
+        "scipy",
+        "cython",
+        "pycocotools",
+        "onnx",
+        "onnxruntime"
+      ],
+      "custom_extensions": {
+        "present": false,
+        "kind": "No native source in the DETR repository",
+        "source_roots": [],
+        "native_counts": {"cpp": 0, "headers": 0, "cuda": 0, "shared_objects": 0},
+        "notes": "COCO API dependencies may compile native code but are irrelevant to the planned query decoder."
+      },
+      "compatibility": {
+        "assessment": "partial-after-port",
+        "full_upstream_runtime": "blocked",
+        "reason": "The transformer/query code is compatible, while the package-level import reaches the scipy Hungarian matcher and scipy is absent. A project-local assignment fallback is required.",
+        "audit_smoke": "models/transformer.py isolated-file decoder: finite output (2,3,2,16); package import: ModuleNotFoundError: scipy"
+      }
+    }
+  ]
+}

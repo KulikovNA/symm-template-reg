@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+work_dirs/
+output_debug/

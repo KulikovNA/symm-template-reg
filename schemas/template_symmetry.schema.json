@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://symm-template-reg.local/schemas/template_symmetry.schema.json",
+  "title": "Template axial symmetry metadata",
+  "description": "Version-1 template-level symmetry sidecar in object coordinates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "object_model_id",
+    "coordinate_frame",
+    "axis",
+    "regions"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "object_model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "coordinate_frame": {
+      "const": "O"
+    },
+    "axis": {
+      "$ref": "#/$defs/axis"
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/region"
+      }
+    }
+  },
+  "$defs": {
+    "finiteVector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "axis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "origin",
+        "direction"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "$ref": "#/$defs/finiteVector3"
+        },
+        "direction": {
+          "$ref": "#/$defs/finiteVector3",
+          "description": "A non-zero vector; the Python loader normalises it."
+        }
+      }
+    },
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "region_id",
+        "y_min_m",
+        "y_max_m",
+        "rotation_group"
+      ],
+      "properties": {
+        "region_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "y_min_m": {
+          "type": "number"
+        },
+        "y_max_m": {
+          "type": "number"
+        },
+        "rotation_group": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/cyclicGroup"
+            },
+            {
+              "$ref": "#/$defs/so2Group"
+            }
+          ]
+        }
+      }
+    },
+    "cyclicGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "order"
+      ],
+      "properties": {
+        "type": {
+          "const": "C"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "so2Group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "SO2"
+        }
+      }
+    }
+  }
+}

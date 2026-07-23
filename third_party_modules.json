@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-07-15",
+  "status_semantics": {
+    "planned": "Approved for a later bounded adaptation; no project-local implementation yet.",
+    "ported": "A project-local adaptation or clean-room interface exists; this status alone does not claim test coverage.",
+    "tested": "The project-local module exists and has passed its declared smoke/unit coverage.",
+    "rejected": "Direct source port is not allowed or not compatible with the current environment."
+  },
+  "global_rules": [
+    "No production import may resolve into an adjacent repository.",
+    "No complete upstream directory is copied.",
+    "Only permissively licensed, small, identified source units may be adapted.",
+    "A clean-room implementation records architectural inspiration but does not copy source text.",
+    "PointDSC source is reference-only because this checkout has no repository-level license grant.",
+    "Native extension ports are rejected for iteration one."
+  ],
+  "modules": [
+    {
+      "id": "regtr_bidirectional_interaction",
+      "source_repository": "RegTR",
+      "source_commit": "0edee25cda6b1ac1c2b0ac686dcdf2593abf25ba",
+      "source_license": "MIT",
+      "original_paths": [
+        "src/models/transformer/transformers.py",
+        "src/models/regtr.py"
+      ],
+      "target_paths": ["symm_template_reg/models/attention/regtr/interaction.py"],
+      "purpose": "Symmetric self-attention followed by bidirectional cross-attention for observed/template tokens.",
+      "strategy": "clean-room adaptation using torch.nn.MultiheadAttention with batch-first masks",
+      "changes": [
+        "Removed RegTR package registry and KPConv coupling.",
+        "Changed sequence layout to batch-first padded tensors.",
+        "Made validity masks explicit and device-agnostic.",
+        "Did not include RegTR weighted pose solver in inference."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "regtr_overlap_and_correspondence_heads",
+      "source_repository": "RegTR",
+      "source_commit": "0edee25cda6b1ac1c2b0ac686dcdf2593abf25ba",
+      "source_license": "MIT",
+      "original_paths": ["src/models/regtr.py"],
+      "target_paths": [
+        "symm_template_reg/models/heads/overlap_head.py",
+        "symm_template_reg/models/heads/correspondence_head.py"
+      ],
+      "purpose": "Auxiliary overlap logits and template-coordinate correspondence predictions.",
+      "strategy": "clean-room heads matching the project output contract",
+      "changes": [
+        "Split upstream combined decoder into registry modules.",
+        "Use soft template matching plus a bounded learned residual.",
+        "Return padded-mask-aware outputs and no mandatory numerical pose solver."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "regtr_kpconv_backbone",
+      "source_repository": "RegTR",
+      "source_commit": "0edee25cda6b1ac1c2b0ac686dcdf2593abf25ba",
+      "source_license": "MIT",
+      "original_paths": [
+        "src/models/backbone_kpconv/kpconv.py",
+        "src/models/backbone_kpconv/cpp_wrappers"
+      ],
+      "target_paths": [],
+      "purpose": "Upstream local point encoder and preprocessing.",
+      "strategy": "Do not port; use SimplePointEncoder in iteration one.",
+      "changes": [],
+      "rejection_reason": "Requires MinkowskiEngine, pytorch3d and C++ wrappers that are absent and unnecessary for the baseline.",
+      "status": "rejected"
+    },
+    {
+      "id": "geotransformer_structure_embedding",
+      "source_repository": "GeoTransformer",
+      "source_commit": "e7a135af4c318ff3b8d7f6c963df094d7e4ea540",
+      "source_license": "MIT",
+      "original_paths": [
+        "geotransformer/modules/geotransformer/geotransformer.py",
+        "geotransformer/modules/ops/pairwise_distance.py",
+        "geotransformer/modules/transformer/positional_embedding.py"
+      ],
+      "target_paths": ["symm_template_reg/models/geometry/geometric_embedding.py"],
+      "purpose": "Rotation/translation-invariant geometric context for point tokens.",
+      "strategy": "clean-room reduced embedding suitable for bounded variable-size smoke batches",
+      "changes": [
+        "Use per-point local distance statistics instead of the upstream O(N^2 k) triplet tensor.",
+        "Use project-local kNN and explicit valid masks.",
+        "Remain pure PyTorch and CPU/CUDA device agnostic."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "geotransformer_coarse_matching",
+      "source_repository": "GeoTransformer",
+      "source_commit": "e7a135af4c318ff3b8d7f6c963df094d7e4ea540",
+      "source_license": "MIT",
+      "original_paths": [
+        "geotransformer/modules/geotransformer/superpoint_matching.py",
+        "geotransformer/modules/ops/pairwise_distance.py"
+      ],
+      "target_paths": ["symm_template_reg/models/matching/coarse_matching.py"],
+      "purpose": "Masked dual-normalized coarse feature matching.",
+      "strategy": "small clean-room torch implementation",
+      "changes": [
+        "Remove hard-coded CUDA allocations.",
+        "Support padded masks and batched feature tensors.",
+        "Return a dense differentiable score matrix instead of top-k index tuples."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "geotransformer_optimal_transport",
+      "source_repository": "GeoTransformer",
+      "source_commit": "e7a135af4c318ff3b8d7f6c963df094d7e4ea540",
+      "source_license": "MIT",
+      "original_paths": ["geotransformer/modules/sinkhorn/learnable_sinkhorn.py"],
+      "target_paths": ["symm_template_reg/models/matching/optimal_transport.py"],
+      "purpose": "Log-domain Sinkhorn normalization with an optional learned dustbin.",
+      "strategy": "device-agnostic adaptation",
+      "changes": [
+        "Replace all .cuda() allocations with input-derived device/dtype.",
+        "Use explicit row/column validity masks.",
+        "Avoid importing the GeoTransformer extension package."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "geotransformer_native_ops",
+      "source_repository": "GeoTransformer",
+      "source_commit": "e7a135af4c318ff3b8d7f6c963df094d7e4ea540",
+      "source_license": "MIT",
+      "original_paths": ["geotransformer/extensions", "setup.py"],
+      "target_paths": [],
+      "purpose": "Grid subsampling and radius-neighbor queries.",
+      "strategy": "Do not port or compile in iteration one.",
+      "changes": [],
+      "rejection_reason": "Upstream declares CUDAExtension, nvcc is absent, and project-local pure torch point operations cover smoke-scale needs.",
+      "status": "rejected"
+    },
+    {
+      "id": "roitr_point_pair_features",
+      "source_repository": "RoITr",
+      "source_commit": "393539d6709c55b2465231cccb7b951f736a5c72",
+      "source_license": "MIT",
+      "original_paths": [
+        "lib/utils.py",
+        "dataset/common.py",
+        "model/transformer/positional_encoding.py"
+      ],
+      "target_paths": ["symm_template_reg/models/geometry/ppf.py"],
+      "purpose": "Point-pair distance and three normal/offset angular features.",
+      "strategy": "clean-room pure-PyTorch implementation",
+      "changes": [
+        "Remove Open3D normal estimation and NumPy runtime paths.",
+        "Accept already-associated point/normal tensors.",
+        "Use clamped normalized dot products for stable angles."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "roitr_rotation_invariant_attention",
+      "source_repository": "RoITr",
+      "source_commit": "393539d6709c55b2465231cccb7b951f736a5c72",
+      "source_license": "MIT",
+      "original_paths": [
+        "model/model.py",
+        "model/transformer/ppftransformer.py",
+        "model/transformer/attention.py"
+      ],
+      "target_paths": ["symm_template_reg/models/attention/rotation_invariant_attention.py"],
+      "purpose": "Optional PPF-conditioned local/cross attention interface.",
+      "strategy": "clean-room project interface; not enabled in baseline",
+      "changes": [
+        "Replace pointops neighborhood construction with caller-provided pair features.",
+        "Express PPF influence as a learned attention bias.",
+        "Avoid CUDA extension and Open3D dependencies."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "roitr_pointops",
+      "source_repository": "RoITr",
+      "source_commit": "393539d6709c55b2465231cccb7b951f736a5c72",
+      "source_license": "MIT",
+      "original_paths": ["cpp_wrappers/pointops"],
+      "target_paths": [],
+      "purpose": "CUDA sampling, kNN/grouping, interpolation and aggregation.",
+      "strategy": "Do not port or load checked-in binaries.",
+      "changes": [],
+      "rejection_reason": "Binaries target CPython 3.7/3.8 and source requires CUDA compilation; pure torch operations are sufficient for iteration one.",
+      "status": "rejected"
+    },
+    {
+      "id": "detr_pose_queries",
+      "source_repository": "detr",
+      "source_commit": "29901c51d7fe8712168b8d0d64351170bc0f83e0",
+      "source_license": "Apache-2.0",
+      "original_paths": ["models/detr.py", "models/transformer.py"],
+      "target_paths": ["symm_template_reg/models/heads/pose_query_head.py"],
+      "purpose": "Learnable query slots, decoder intermediates, no-pose logits and auxiliary predictions.",
+      "strategy": "domain-specific clean-room adaptation using torch.nn.TransformerDecoderLayer",
+      "changes": [
+        "Decode 6D rotations, translations, logits and uncertainty instead of boxes/classes.",
+        "Use point-token memory masks and batch-first tensors.",
+        "Retain intermediate decoder outputs for auxiliary losses."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "detr_hungarian_assignment",
+      "source_repository": "detr",
+      "source_commit": "29901c51d7fe8712168b8d0d64351170bc0f83e0",
+      "source_license": "Apache-2.0",
+      "original_paths": ["models/matcher.py", "models/detr.py"],
+      "target_paths": [
+        "symm_template_reg/models/matching/hungarian_assigner.py",
+        "symm_template_reg/models/losses/pose_set_loss.py"
+      ],
+      "purpose": "One-to-one matching of K pose queries to admissible GT hypotheses.",
+      "strategy": "clean-room polynomial rectangular Hungarian-style assignment",
+      "changes": [
+        "Remove SciPy and box-specific cost terms.",
+        "Accept an already-computed rectangular pose cost matrix.",
+        "Use an augmenting-path implementation that remains practical for K=8 and SO2 samples G=36."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "taxpose_point_importance",
+      "source_repository": "taxpose",
+      "source_commit": "0c4298fa0486fd09e63bf24d618a579b66ba0f18",
+      "source_license": "MIT",
+      "original_paths": [
+        "taxpose/nets/transformer_flow_pm.py",
+        "taxpose/nets/transformer_flow.py",
+        "taxpose/models/taxpose.py"
+      ],
+      "target_paths": ["symm_template_reg/models/heads/point_weight_head.py"],
+      "purpose": "Per-observed-point confidence/importance logits for correspondence diagnostics and loss weighting.",
+      "strategy": "clean-room small MLP head",
+      "changes": [
+        "Remove DCP, PyTorch3D, PyG and dual-flow pose-solver coupling.",
+        "Return raw masked logits rather than concatenated flow-plus-weight tensors."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "pointtransformerv3_encoder",
+      "source_repository": "PointTransformerV3",
+      "source_commit": "3229e9b7de1770c8ad17c316f8e349982de509f8",
+      "source_license": "MIT",
+      "original_paths": ["model.py", "serialization/default.py", "serialization/z_order.py", "serialization/hilbert.py"],
+      "target_paths": ["symm_template_reg/models/backbones/ptv3/__init__.py"],
+      "purpose": "Optional serialized packed-point encoder.",
+      "strategy": "Register an explicit unavailable placeholder; no upstream model source is ported in iteration one.",
+      "changes": [],
+      "rejection_reason": "The standalone model requires missing addict, spconv, torch_scatter and timm; CUDA 13 compatibility is unverified.",
+      "status": "rejected"
+    },
+    {
+      "id": "pointcept_point_structure_and_ptv3",
+      "source_repository": "Pointcept",
+      "source_commit": "2b97e6e77a5ad731778f268ccea28ed684367b3f",
+      "source_license": "MIT",
+      "original_paths": [
+        "pointcept/models/utils/structure.py",
+        "pointcept/models/utils/serialization/default.py",
+        "pointcept/models/utils/serialization/z_order.py",
+        "pointcept/models/utils/serialization/hilbert.py",
+        "pointcept/models/point_transformer_v3/point_transformer_v3m1_base.py"
+      ],
+      "target_paths": [],
+      "purpose": "Reference packed-point semantics, serialization, pooling and PTv3 blocks.",
+      "strategy": "Reference only; current PackedPointBatch is an independent project data contract.",
+      "changes": [],
+      "rejection_reason": "Pointcept targets torch 2.5/CUDA 12.4 and requires spconv, torch_scatter plus multiple unbuilt C++/CUDA libraries.",
+      "status": "rejected"
+    },
+    {
+      "id": "dfat_focus_attention_interface",
+      "source_repository": "DFAT",
+      "source_commit": "884149656199c734e2fceff1eda7d7d3b8ebf8c6",
+      "source_license": "MIT",
+      "original_paths": [
+        "geotransformer/modules/transformer/spotguided_transformer.py",
+        "geotransformer/modules/lineartransformer/linear_attention.py",
+        "geotransformer/modules/lineartransformer/transformer.py",
+        "experiments/3DMatch/model.py"
+      ],
+      "target_paths": ["symm_template_reg/models/attention/focus_attention.py"],
+      "purpose": "Second-queue token focus/saliency interface.",
+      "strategy": "clean-room interface only; deliberately excluded from baseline config",
+      "changes": [
+        "Expose learned saliency top-k selection without GeoTransformer neighbor metadata.",
+        "Do not port fine-scale focus integration or native operations."
+      ],
+      "status": "ported"
+    },
+    {
+      "id": "dfat_native_and_chamfer_extensions",
+      "source_repository": "DFAT",
+      "source_commit": "884149656199c734e2fceff1eda7d7d3b8ebf8c6",
+      "source_license": "MIT",
+      "original_paths": ["geotransformer/extensions", "setup.py"],
+      "target_paths": [],
+      "purpose": "Grid/radius ops and CUDA chamfer distance.",
+      "strategy": "Do not port or compile.",
+      "changes": [],
+      "rejection_reason": "Legacy CPython 3.8 binary, missing nvcc/einops, and not required by the iteration-one baseline.",
+      "status": "rejected"
+    },
+    {
+      "id": "pointdsc_spatial_consistency_source_port",
+      "source_repository": "PointDSC",
+      "source_commit": "b009d536ac10b570853833f2178397c154745da9",
+      "source_license": "NOASSERTION",
+      "original_paths": ["models/PointDSC.py", "models/common.py"],
+      "target_paths": ["symm_template_reg/models/matching/spatial_consistency.py"],
+      "purpose": "Second-queue pairwise distance-preservation consistency score.",
+      "strategy": "Reject source port; target is an independent formula-level clean-room interface and contains no copied source.",
+      "changes": [],
+      "rejection_reason": "No repository-level license or README grant was found.",
+      "status": "rejected"
+    },
+    {
+      "id": "pointdsc_prebuilt_pmc",
+      "source_repository": "PointDSC",
+      "source_commit": "b009d536ac10b570853833f2178397c154745da9",
+      "source_license": "NOASSERTION",
+      "original_paths": ["utils/libpmc.so", "utils/max_clique.py"],
+      "target_paths": [],
+      "purpose": "Maximum-clique native helper.",
+      "strategy": "Do not copy or load.",
+      "changes": [],
+      "rejection_reason": "Unlicensed prebuilt binary without corresponding source in this checkout; also unnecessary for the baseline.",
+      "status": "rejected"
+    }
+  ]
+}

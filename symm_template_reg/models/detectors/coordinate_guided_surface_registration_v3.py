@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import torch
 from torch import Tensor, nn
 
-from symm_template_reg.models.detectors.conditioned_symm_template_reg import (
-    _extract_padded_feature,
-)
 from symm_template_reg.engine.static_geometry_cache import StaticGeometryCache
 from symm_template_reg.models.backbones.simple_point_encoder import as_padded_points
-from symm_template_reg.models.detectors.symm_template_reg import _symmetry_availability
 from symm_template_reg.models.geometry.point_ops import (
     batched_gather,
     nearest_interpolate,
@@ -36,6 +32,56 @@ LEGACY_MODULE_TOKENS = (
     "pose_query", "ranking", "patch", "triangle", "barycentric",
     "region", "overlap", "visibility", "confidence", "insufficient",
 )
+
+
+def _extract_padded_feature(value: Any, name: str) -> Tensor | None:
+    """Read an optional aligned input feature without treating it as a target."""
+
+    if hasattr(value, "to_padded"):
+        padded = value.to_padded()
+        features = padded.get("features", {}) if isinstance(padded, Mapping) else {}
+        result = features.get(name)
+    elif isinstance(value, Mapping):
+        result = value.get(name)
+        if result is None and isinstance(value.get("features"), Mapping):
+            result = value["features"].get(name)
+    else:
+        result = None
+    if result is not None and result.ndim == 2:
+        result = result.unsqueeze(0)
+    return result
+
+
+def _symmetry_availability(
+    metadata: Any, batch_size: int, device: torch.device
+) -> Tensor:
+    """Convert sidecar presence/flags to one bool per sample."""
+
+    if metadata is None:
+        values = [False] * batch_size
+    elif isinstance(metadata, Tensor):
+        if metadata.numel() != batch_size:
+            raise ValueError("symmetry availability batch size mismatch")
+        return metadata.to(device=device, dtype=torch.bool).reshape(batch_size)
+    elif isinstance(metadata, Mapping):
+        value = metadata.get("symmetry_available", False)
+        values = (
+            list(value)
+            if isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+            else [bool(value)] * batch_size
+        )
+    elif isinstance(metadata, Sequence):
+        values = [
+            bool(item.get("symmetry_available", False))
+            if isinstance(item, Mapping)
+            else item is not None
+            for item in metadata
+        ]
+    else:
+        values = [bool(metadata)] * batch_size
+    if len(values) != batch_size:
+        raise ValueError("symmetry metadata batch size mismatch")
+    return torch.tensor(values, dtype=torch.bool, device=device)
 
 
 def state_dict_sha256(module: nn.Module) -> str:

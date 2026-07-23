@@ -1,154 +1,140 @@
 # symm-template-reg
 
-Modular research baseline for direct, symmetry-aware registration of a visible
-fragment to an explicit object template. Components are built from Python dict
-configs through project-local registries; neighbouring repositories are audit and
-architectural-reference inputs only, never runtime dependencies.
+Минимальный production-код регистрации видимого фрагмента на единственном
+известном эталонном mesh с учётом осевой симметрии.
 
-## What iteration one provides
+## Текущая архитектура
 
-- real synthetic-dataset loader with one `(scene, frame, fragment)` per sample;
-- variable-size packed batches as the default, with an explicit padded adapter;
-- cached template meshes, vertex normals, and configurable fine/coarse samples;
-- optional template symmetry sidecars (`Cn` and continuous `SO2`);
-- pure-PyTorch point encoding and bounded-token self/cross interaction;
-- `K=8` direct SE(3) hypotheses plus overlap, visibility, correspondence,
-  confidence, region, uncertainty, and insufficient-information outputs;
-- symmetry-aware pose-set loss and dependency-free polynomial rectangular assignment;
-- timestamped template/fragment symmetry visualization with an internal RGB PLY writer;
-- real CPU forward and one finite optimizer-step smoke path.
+В registry есть одна модель: `CoordinateGuidedSurfaceRegistrationV3`.
+Shell-точки в системе камеры и точки эталона проходят point encoders,
+двунаправленное interaction, dual-stream geometry и fine adapter. Голова
+предсказывает канонические координаты `q_aux` в системе объекта. На inference
+используются exact-global либо `q_aux`-guided K=16 поиск треугольников, точная
+проекция и uniform `WeightedProcrustes`. Hard projection не входит в
+дифференцируемый training path.
 
-This is an inspectable baseline, not a trained quality claim. PTv3, DFAT focus
-attention, and PointDSC consistency are optional/deferred and are not used by the
-baseline config.
+В production отсутствуют pose queries, ranking, learned patch/triangle/
+barycentric/confidence/region/overlap heads и direct pose regression.
 
-## Installation
+## Dataset
 
-Use the already-active `fracs` environment. Do not replace PyTorch, CUDA,
-torchvision, or NumPy.
+Корень имеет физически раздельные `train/`, `val/`, `test/`; внутри split
+лежат `models/` и `scene_*`. `SplitDirectoryFragmentDataset` автоматически
+сканирует все сцены, кадры и наблюдения физических фрагментов без manifest.
+Sample ID: `split/scene_XXXXXX/frame_XXXXXX/fragment_XXXX`.
+
+Template `.ply`, `.symmetry.json` и `.meta.json` проверяются между splits.
+Raw PLY может отличаться сохранёнными normals, поэтому контракт использует
+semantic SHA-256 вершин и faces и отдельно сообщает raw hash. Подробности:
+[DATASET_RU.md](docs/DATASET_RU.md).
+
+## Установка
 
 ```bash
 cd /home/nikita/disser/fragment-template-registration-lab/symm-template-reg
 python -m pip install -e . --no-deps
 ```
 
-The runtime requirements are only NumPy and PyTorch. No Open3D, SciPy, `plyfile`,
-custom C++/CUDA extension, or adjacent checkout is required.
-
-## Reproduce the checks
+## Inventory
 
 ```bash
-python -m compileall symm_template_reg tools tests configs
-python tools/inspect_environment.py \
-  --third-party-root /home/nikita/disser/fragment-template-registration-lab
 python tools/inspect_dataset.py \
-  --dataset-root /home/nikita/data_generator/generation_dataset/generation_synthetic/output/fragment_template_registration/differBig/2026-07-08/test \
-  --out-dir work_dirs/dataset_inspection/2026-07-08-test
-python tools/smoke_dataset.py \
-  --config configs/symm_template_reg_baseline.py --num-samples 8
-python tools/smoke_model.py \
-  --config configs/symm_template_reg_baseline.py --device cpu
-python tools/smoke_train_step.py \
-  --config configs/symm_template_reg_baseline.py --device cpu
-python -m unittest discover -s tests -v
+  --dataset-root "$FRAG_DATASET_ROOT" \
+  --output-dir "$FRAG_WORK_DIR/dataset_inventory"
 ```
 
-## Controlled debug training on the test split
+## Boundary augmentation
 
-These commands are debugging/overfit checks only. Their results are explicitly
-marked `results_are_not_final_evaluation=true`. First audit physical fragment
-sizes; do not enable training until `min_num_faces` has been selected manually:
+Только train может локально erode/dilate границу shell mask. Добавляемые
+fracture/depth-ring точки проходят depth gate и точную проекцию на template;
+GT pose используется только для построения train target и не подаётся модели.
+См. [AUGMENTATION_RU.md](docs/AUGMENTATION_RU.md).
+
+## Smoke
 
 ```bash
-python tools/audit_fragment_mesh_sizes.py \
-  --dataset-root /home/nikita/data_generator/generation_dataset/generation_synthetic/output/fragment_template_registration/differBig/2026-07-08/test \
-  --output-dir work_dirs/fragment_size_audit/2026-07-08-test
+python tools/check_cuda.py
+python tools/train.py --config configs/debug/smoke.py --device cuda \
+  --from-scratch --cfg-options data.dataset_root="$FRAG_DATASET_ROOT" \
+  --work-dir "$FRAG_WORK_DIR"
+```
 
-# After setting the chosen threshold in the debug configs:
-python tools/build_debug_manifests.py \
-  --config configs/debug/tiny_overfit_pose_only.py \
-  --output-dir work_dirs/debug_manifests
+Smoke ограничен пятью optimizer steps и одним val batch.
+
+## Обучение и resume
+
+```bash
+python tools/train.py \
+  --config configs/train/coordinate_guided_surface_v3.py \
+  --device cuda --from-scratch \
+  --cfg-options data.dataset_root="$FRAG_DATASET_ROOT" \
+  --work-dir "$FRAG_WORK_DIR"
 
 python tools/train.py \
-  --config configs/debug/tiny_overfit_pose_only.py \
-  --device cpu --max-steps 5
+  --config configs/train/coordinate_guided_surface_v3.py \
+  --device cuda --resume "<RUN>/checkpoints/latest.pth" \
+  --cfg-options data.dataset_root="$FRAG_DATASET_ROOT" \
+  --work-dir "$FRAG_WORK_DIR"
 ```
 
-CUDA availability and the strict no-fallback CUDA path can be checked with
-`python tools/check_cuda.py`. The complete coordinate, symmetry, assignment,
-filtering, and inference contract is in
-[docs/TRAINING_CONTRACT.md](docs/TRAINING_CONTRACT.md).
+`latest.pth` содержит model, optimizer, scheduler, RNG, epoch, позицию batch,
+global optimizer step и fingerprints train/val индексов. Подробности и profile:
+[TRAINING_RU.md](docs/TRAINING_RU.md).
 
-CUDA tools return a documented skip when `torch.cuda.is_available()` is false:
+## Validation и explicit test
 
 ```bash
-python tools/smoke_model.py \
-  --config configs/symm_template_reg_baseline.py --device cuda
-python tools/smoke_train_step.py \
-  --config configs/symm_template_reg_baseline.py --device cuda
+python tools/evaluate.py \
+  --config configs/eval/coordinate_guided_surface_v3.py \
+  --dataset-root "$FRAG_DATASET_ROOT" --split val \
+  --checkpoint "<RUN>/checkpoints/best.pth" --device cuda \
+  --output-dir "$FRAG_WORK_DIR/evaluation_val"
+
+python tools/evaluate.py \
+  --config configs/eval/coordinate_guided_surface_v3.py \
+  --dataset-root "$FRAG_DATASET_ROOT" --split test \
+  --checkpoint "<RUN>/checkpoints/best.pth" --device cuda \
+  --output-dir "$FRAG_WORK_DIR/evaluation_test"
 ```
 
-## Configuration and registries
+Test индексируется только второй явной командой и всегда получает warning, что
+его нельзя использовать для model selection. См. [INFERENCE_RU.md](docs/INFERENCE_RU.md).
 
-The baseline is [configs/symm_template_reg_baseline.py](configs/symm_template_reg_baseline.py).
-It builds all production components through these registries:
+## Визуализация и export
 
-`MODELS`, `BACKBONES`, `ATTENTION`, `GEOMETRY_MODULES`, `MATCHERS`,
-`HEADS`, `LOSSES`, `POSE_MODULES`, `SYMMETRY_MODULES`, `DATASETS`, and
-`COLLATE_FUNCTIONS`.
+`tools/visualize_predictions.py`, `tools/visualize_boundary_augmentation.py` и
+`tools/visualize_template_symmetry.py` сохраняют PLY/PNG/JSON diagnostics.
+`tools/export_model.py` экспортирует чистый state dict с SHA-256.
+`tools/package_training_report.py` создаёт компактный архив без PTH/PT/PLY/
+NPY/NPZ.
 
-The data root may be a direct split directory, as in the baseline, or a common
-root plus `split="train"`, `"val"`, or `"test"`.
+## Структура
 
-## Model output contract
+```text
+configs/{train,eval,debug}/
+docs/
+symm_template_reg/{datasets,engine,evaluation,geometry,models,visualization}/
+tests/
+tools/
+```
 
-For padded maxima `No`, `Nt`, configured pose queries `K`, uncertainty width `U`,
-and region capacity `R`, `RegistrationPrediction` contains:
+## Ограничения
 
-| field | shape |
-|---|---|
-| `pose_hypotheses` | `[B, K, 4, 4]` |
-| `pose_logits` | `[B, K]` |
-| `pose_uncertainty` | `[B, K, U]` |
-| `observed_overlap_logits` | `[B, No]` |
-| `template_visibility_logits` | `[B, Nt]` |
-| `correspondence_points_O` | `[B, No, 3]` |
-| `correspondence_confidence` | `[B, No]` |
-| `observed_region_logits` | `[B, No, R]` |
-| `active_region_logits` | `[B, R]` |
-| `insufficient_information_logit` | `[B, 1]` |
-| `observed_valid_mask`, `template_valid_mask` | `[B, No]`, `[B, Nt]` |
+Модель рассчитана на один известный template, uniform Procrustes и небольшие
+ошибки границы, прошедшие geometry gates. Она не является robust estimator для
+произвольных фоновых выбросов. FP16/BF16 не включаются без отдельного
+equivalence audit. `test` не используется при подборе модели.
 
-Dense padded outputs always carry masks; padding is not supervision. Direct pose
-hypotheses are the inference output. Correspondences remain auxiliary and
-diagnostic—there is no mandatory numerical pose solver.
 
-## Symmetry
+```bash
+export LARGE_DATASET_ROOT=/путь/к/полному_dataset
+export FRAG_DATASET_ROOT=/путь/к/воркдир
 
-A sidecar lives beside a template as `<template-stem>.symmetry.json`. Its schema
-is [schemas/template_symmetry.schema.json](schemas/template_symmetry.schema.json),
-with an example in [examples](examples/). If absent, the loader returns no
-metadata, sets `symmetry_available=false`, and does not silently assert `C1`.
-Symmetry-region losses are then disabled; ordinary single-pose loss is only the
-documented smoke/debug fallback.
-
-The current real sidecar can be inspected without duplicating target math via
-`tools/debug_symmetry_visualization.py`; see
-[docs/SYMMETRY_DEBUG.md](docs/SYMMETRY_DEBUG.md).
-
-## Audit and data documentation
-
-- [Dataset format](docs/DATASET_FORMAT.md)
-- [Third-party audit](docs/THIRD_PARTY_AUDIT.md)
-- [Environment compatibility](docs/ENVIRONMENT_COMPATIBILITY.md)
-- [Module porting plan](docs/MODULE_PORTING_PLAN.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [Complete iteration-one report](docs/ITERATION1_REPORT.md)
-- [Symmetry debug visualization](docs/SYMMETRY_DEBUG.md)
-- [Debug training contract](docs/TRAINING_CONTRACT.md)
-- [CUDA environment diagnosis](docs/CUDA_ENVIRONMENT_FIX.md)
-- [faces840 controlled GPU overfit](docs/TEST_OVERFIT_FACES840.md)
-
-Every influenced clean-room module records the exact reference repository,
-commit, original paths, license, and project-local changes in its header. The
-machine-readable inventory is `third_party_modules.json`.
+python tools/train.py \
+  --config configs/train/coordinate_guided_surface_v3.py \
+  --device cuda \
+  --from-scratch \
+  --work-dir "$FRAG_WORK_DIR" \
+  --cfg-options \
+    data.dataset_root="$LARGE_DATASET_ROOT"
+```

@@ -225,6 +225,7 @@ class TemplateRepository:
         fine_sample_count: int | None = None,
         coarse_sample_count: int | None = None,
         compute_missing_normals: bool = True,
+        recompute_normals: bool = False,
     ) -> None:
         resolved = Path(models_dir).expanduser().resolve()
         if (resolved / "models").is_dir() and not any(resolved.glob("*.ply")):
@@ -238,6 +239,7 @@ class TemplateRepository:
             if count is not None and int(count) <= 0:
                 raise ValueError(f"{name} must be positive or None")
         self.compute_missing_normals = compute_missing_normals
+        self.recompute_normals = bool(recompute_normals)
         self._cache: dict[str, dict[str, Any]] = {}
         self._load_counts: dict[str, int] = {}
         self._feature_cache: dict[tuple[str, str], Any] = {}
@@ -307,7 +309,9 @@ class TemplateRepository:
         mesh = load_ply(mesh_path)
         points = mesh["points"]
         normals = mesh["normals"]
-        if normals is None and self.compute_missing_normals:
+        if self.recompute_normals or (
+            normals is None and self.compute_missing_normals
+        ):
             normals = compute_vertex_normals(points, mesh["faces"])
         fine_indices = self._sample_indices(points, self.fine_points)
         coarse_indices = self._sample_indices(points, self.coarse_points)

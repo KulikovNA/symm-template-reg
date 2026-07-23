@@ -10,16 +10,40 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from symm_template_reg.models.losses.joint_surface_correspondence_pose_loss_v3 import (
-    coordinate_mean_and_tail_loss,
-    per_sample_mean_then_batch_mean,
-)
 from symm_template_reg.models.pose.pose_representation import invert_transform, transform_points
 from symm_template_reg.models.pose.rotation import rotation_geodesic_distance
 from symm_template_reg.models.pose.weighted_procrustes import WeightedProcrustes
 from symm_template_reg.models.symmetry.groups import parse_rotation_group
 from symm_template_reg.models.symmetry.hypothesis_expander import symmetry_transforms
 from symm_template_reg.registry import LOSSES
+
+
+def coordinate_mean_and_tail_loss(
+    predicted_normalized: Tensor,
+    target_normalized: Tensor,
+    tail_fraction: float = 0.10,
+) -> tuple[Tensor, Tensor]:
+    """Return per-target mean and worst-point SmoothL1 coordinate losses."""
+
+    if predicted_normalized.ndim == target_normalized.ndim - 1:
+        predicted_normalized = predicted_normalized.unsqueeze(0).expand_as(
+            target_normalized
+        )
+    per_point = F.smooth_l1_loss(
+        predicted_normalized, target_normalized, reduction="none"
+    ).mean(-1)
+    count = max(1, math.ceil(per_point.shape[-1] * float(tail_fraction)))
+    return per_point.mean(-1), per_point.topk(count, dim=-1).values.mean(-1)
+
+
+def per_sample_mean_then_batch_mean(sample_losses: Sequence[Tensor]) -> Tensor:
+    """Give every sample equal weight after its own point-wise reduction."""
+
+    if not sample_losses:
+        raise ValueError("at least one sample loss is required")
+    return torch.stack(
+        [value.mean() if value.ndim else value for value in sample_losses]
+    ).mean()
 
 
 def scratch_warmup_progress(epoch: int, warmup_epochs: int = 250) -> float:

@@ -12,10 +12,15 @@ from .collate import (
     packed_collate,
     padded_collate,
 )
+from .boundary_augmentation import (
+    BoundaryMaskAugmentation,
+    DEFAULT_BOUNDARY_AUGMENTATION,
+)
 from .fragment_template_dataset import (
     FragmentTemplateRegistrationDataset,
     resolve_split_root,
 )
+from .split_directory_fragment_dataset import SplitDirectoryFragmentDataset
 from .fragment_mesh_filter import (
     FragmentFilterDecision,
     FragmentMeshFilter,
@@ -31,7 +36,10 @@ from .transforms import ObservedPointSelector
 
 __all__ = [
     "DatasetSampleRecord",
+    "BoundaryMaskAugmentation",
+    "DEFAULT_BOUNDARY_AUGMENTATION",
     "FragmentTemplateRegistrationDataset",
+    "SplitDirectoryFragmentDataset",
     "FragmentFilterDecision",
     "FragmentMeshFilter",
     "FragmentMeshMetadata",

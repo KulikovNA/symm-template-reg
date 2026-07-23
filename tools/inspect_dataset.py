@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from collections import Counter, defaultdict
@@ -56,6 +57,30 @@ def _write_json(path: Path, value: Any) -> None:
     with path.open("w", encoding="utf-8") as stream:
         json.dump(value, stream, indent=2, sort_keys=True, ensure_ascii=False)
         stream.write("\n")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _template_geometry_sha256(path: Path) -> str:
+    """Hash registration geometry, excluding non-deterministic stored normals."""
+
+    mesh = load_ply(path)
+    digest = hashlib.sha256()
+    for name, value, dtype in (
+        ("vertices", mesh["points"], "<f4"),
+        ("faces", mesh["faces"], "<i8"),
+    ):
+        array = np.ascontiguousarray(np.asarray(value, dtype=dtype))
+        digest.update(name.encode("ascii"))
+        digest.update(str(array.shape).encode("ascii"))
+        digest.update(array.tobytes())
+    return digest.hexdigest()
 
 
 def _array_range(array: np.ndarray) -> tuple[float | int | None, float | int | None]:
@@ -744,16 +769,247 @@ missing/corrupt assets. See `warnings.json` for actionable findings.
     }
 
 
+def inspect_dataset_splits(dataset_root: str | Path, out_dir: str | Path) -> dict[str, Any]:
+    """Inspect train/val/test and write one cross-split production inventory."""
+
+    root = Path(dataset_root).expanduser().resolve()
+    output = Path(out_dir).expanduser().resolve()
+    splits = ("train", "val", "test")
+    missing = [split for split in splits if not (root / split).is_dir()]
+    if missing:
+        raise FileNotFoundError(f"dataset root misses split directories: {missing}")
+    output.mkdir(parents=True, exist_ok=True)
+    summaries: dict[str, Any] = {}
+    inventories: dict[str, Any] = {}
+    schemas: dict[str, Any] = {}
+    combined_rows: list[dict[str, Any]] = []
+    template_contract: dict[str, Any] = {}
+    fragment_hashes: dict[str, dict[str, list[str]]] = {}
+
+    for split in splits:
+        split_output = output / split
+        summaries[split] = inspect_dataset(root / split, split_output)
+        inventories[split] = json.loads(
+            (split_output / "dataset_inventory.json").read_text(encoding="utf-8")
+        )
+        schemas[split] = json.loads(
+            (split_output / "npz_schema.json").read_text(encoding="utf-8")
+        )
+        with (split_output / "sample_index.csv").open(
+            encoding="utf-8", newline=""
+        ) as stream:
+            for row in csv.DictReader(stream):
+                raw_id = row["sample_id"]
+                combined_rows.append(
+                    {
+                        "split": split,
+                        **row,
+                        "sample_id": f"{split}/{raw_id}",
+                    }
+                )
+        model_dir = root / split / "models"
+        templates = sorted(model_dir.glob("object_*.ply"))
+        if len(templates) != 1:
+            raise ValueError(
+                f"{split} must contain exactly one production object_*.ply; "
+                f"found {len(templates)}"
+            )
+        template = templates[0]
+        sidecar = template.with_suffix(".symmetry.json")
+        metadata_path = template.with_suffix(".meta.json")
+        if not sidecar.is_file() or not metadata_path.is_file():
+            raise FileNotFoundError(
+                f"{split} template requires matching .symmetry.json and .meta.json"
+            )
+        split_template_inventory = json.loads(
+            (split_output / "template_inventory.json").read_text(encoding="utf-8")
+        )["templates"][0]
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        template_contract[split] = {
+            "template_path": str(template),
+            "template_sha256": _template_geometry_sha256(template),
+            "template_hash_semantics": "exact vertices(float32)+faces(int64)",
+            "template_file_sha256": _sha256(template),
+            "sidecar_path": str(sidecar),
+            "sidecar_sha256": _sha256(sidecar),
+            "metadata_path": str(metadata_path),
+            "metadata_sha256": _sha256(metadata_path),
+            "object_id": metadata.get("object_id"),
+            "coordinate_unit": metadata.get(
+                "coordinate_unit", metadata.get("units", metadata.get("unit"))
+            ),
+            "object_frame": metadata.get(
+                "object_frame", metadata.get("coordinate_frame")
+            ),
+            "bbox_min_m": split_template_inventory["bounds_min_m"],
+            "bbox_max_m": split_template_inventory["bounds_max_m"],
+        }
+        split_fragment_hashes: dict[str, list[str]] = defaultdict(list)
+        for mesh in sorted((root / split).glob("scene_*/fragments/fragment_*.ply")):
+            split_fragment_hashes[_sha256(mesh)].append(
+                str(mesh.relative_to(root / split))
+            )
+        fragment_hashes[split] = dict(sorted(split_fragment_hashes.items()))
+
+    template_hashes = {
+        value["template_sha256"] for value in template_contract.values()
+    }
+    raw_template_file_hashes = {
+        value["template_file_sha256"] for value in template_contract.values()
+    }
+    sidecar_hashes = {
+        value["sidecar_sha256"] for value in template_contract.values()
+    }
+    bbox_pairs = {
+        (
+            tuple(value["bbox_min_m"]),
+            tuple(value["bbox_max_m"]),
+        )
+        for value in template_contract.values()
+    }
+    cross_split_fragment_overlap: list[dict[str, Any]] = []
+    for left_index, left in enumerate(splits):
+        for right in splits[left_index + 1 :]:
+            overlap = sorted(set(fragment_hashes[left]) & set(fragment_hashes[right]))
+            for digest in overlap:
+                cross_split_fragment_overlap.append(
+                    {
+                        "sha256": digest,
+                        "left_split": left,
+                        "left_paths": fragment_hashes[left][digest],
+                        "right_split": right,
+                        "right_paths": fragment_hashes[right][digest],
+                    }
+                )
+    split_statistics = {
+        split: {
+            "num_scenes": inventories[split]["num_scenes"],
+            "num_frames": inventories[split]["num_gt_frames"],
+            "num_observations": inventories[split]["num_samples"],
+            "num_physical_fragments": sum(
+                len(paths) for paths in fragment_hashes[split].values()
+            ),
+            "num_unique_fragment_mesh_hashes": len(fragment_hashes[split]),
+            "observed_points": inventories[split]["observed_points"],
+            "row_invariant_validation": inventories[split][
+                "row_invariant_validation"
+            ],
+            "error_findings": summaries[split]["error_findings"],
+        }
+        for split in splits
+    }
+    contract = {
+        "splits": template_contract,
+        "template_hash_matches_between_splits": len(template_hashes) == 1,
+        "raw_template_file_hash_matches_between_splits": (
+            len(raw_template_file_hashes) == 1
+        ),
+        "raw_template_file_hash_note": (
+            "Raw PLY hashes include stored normals. Production template hash uses "
+            "exact vertices+faces; normals are recomputed deterministically."
+        ),
+        "sidecar_hash_matches_between_splits": len(sidecar_hashes) == 1,
+        "bbox_matches_between_splits": len(bbox_pairs) == 1,
+    }
+    if not all(
+        contract[key]
+        for key in (
+            "template_hash_matches_between_splits",
+            "sidecar_hash_matches_between_splits",
+            "bbox_matches_between_splits",
+        )
+    ):
+        _write_json(output / "template_contract.json", contract)
+        raise ValueError("template/sidecar/bbox contract differs between splits")
+
+    combined_inventory = {
+        "dataset_root": str(root),
+        "split_order": list(splits),
+        "split_statistics": split_statistics,
+        "template_contract": contract,
+        "splits": inventories,
+    }
+    leakage = {
+        "sample_id_overlap": [],
+        "scene_ids_are_split_qualified": True,
+        "template_hash_overlap_expected": True,
+        "physical_fragment_mesh_overlap": cross_split_fragment_overlap,
+        "physical_fragment_mesh_overlap_count": len(
+            cross_split_fragment_overlap
+        ),
+        "leakage_warning": bool(cross_split_fragment_overlap),
+    }
+    _write_json(output / "dataset_inventory.json", combined_inventory)
+    _write_json(output / "npz_schema.json", {"splits": schemas})
+    _write_json(output / "split_statistics.json", split_statistics)
+    _write_json(output / "template_contract.json", contract)
+    _write_json(output / "fragment_leakage_audit.json", leakage)
+    fieldnames = list(combined_rows[0]) if combined_rows else ["split", "sample_id"]
+    with (output / "dataset_inventory.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(combined_rows)
+    lines = [
+        "# Dataset inventory: train / val / test",
+        "",
+        f"- Root: `{root}`",
+        f"- Template hash совпадает: **{contract['template_hash_matches_between_splits']}**",
+        f"- Sidecar hash совпадает: **{contract['sidecar_hash_matches_between_splits']}**",
+        f"- Cross-split fragment mesh overlaps: **{len(cross_split_fragment_overlap)}**",
+        "",
+        "| split | scenes | frames | physical fragments | observations | errors |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for split in splits:
+        row = split_statistics[split]
+        lines.append(
+            f"| {split} | {row['num_scenes']} | {row['num_frames']} | "
+            f"{row['num_physical_fragments']} | {row['num_observations']} | "
+            f"{row['error_findings']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Подробная фактическая NPZ schema находится в `npz_schema.json`; "
+            "по каждому split сохранены полные raster/JSON/transform проверки.",
+            "",
+        ]
+    )
+    (output / "dataset_inventory.md").write_text(
+        "\n".join(lines), encoding="utf-8"
+    )
+    return {
+        "output_dir": str(output),
+        "split_statistics": split_statistics,
+        "template_contract": {
+            key: value for key, value in contract.items() if key != "splits"
+        },
+        "physical_fragment_mesh_overlap_count": len(
+            cross_split_fragment_overlap
+        ),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-root", required=True, type=Path)
-    parser.add_argument("--out-dir", required=True, type=Path)
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--out-dir", type=Path)
+    output.add_argument("--output-dir", type=Path)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    print(json.dumps(inspect_dataset(args.dataset_root, args.out_dir), indent=2))
+    output = args.out_dir or args.output_dir
+    root = args.dataset_root.expanduser().resolve()
+    if all((root / split).is_dir() for split in ("train", "val", "test")):
+        result = inspect_dataset_splits(root, output)
+    else:
+        result = inspect_dataset(root, output)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "object_model_id": "object_000004",
+  "coordinate_frame": "O",
+  "axis": {
+    "name": "y",
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "direction": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "regions": [
+    {
+      "region_id": "band_00",
+      "y_min_m": -0.04945,
+      "y_max_m": -0.036084,
+      "rotation_group": {
+        "type": "SO2"
+      }
+    },
+    {
+      "region_id": "band_01",
+      "y_min_m": -0.036084,
+      "y_max_m": 0.004047,
+      "rotation_group": {
+        "type": "C",
+        "order": 10
+      }
+    },
+    {
+      "region_id": "band_02",
+      "y_min_m": 0.004047,
+      "y_max_m": 0.018764,
+      "rotation_group": {
+        "type": "SO2"
+      }
+    },
+    {
+      "region_id": "band_03",
+      "y_min_m": 0.018764,
+      "y_max_m": 0.04945,
+      "rotation_group": {
+        "type": "C",
+        "order": 4
+      }
+    }
+  ]
+}
